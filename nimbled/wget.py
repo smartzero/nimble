@@ -5,12 +5,14 @@ import cgi
 import posixpath
 from sys import stdout
 
-def urlretrieve(url, lo, hi, filename, progressbar):
-    resp = requests.head(url)
-    size = int(resp.headers.get('content-length', '0'))
+
+def urlretrieve(url, lo, hi, filename, callback):
     urlopener = urllib.FancyURLopener()
     urlopener.addheader('Range', 'bytes={0}-{1}'.format(lo, hi))
-    urlopener.urlretrieve(url, filename, progressbar)
+    return urlopener.retrieve(url, filename, callback)
+
+def downloadSize(url):
+    return int(requests.head(url).headers.get('Content-Length', '0'))
 
 def extractFilename(url):
     # extracts filename of url either from headers or from url string
@@ -30,15 +32,29 @@ def progressbar(blocks, blocksize, totalsize):
             currentsize, totalsize, completed))
     stdout.flush()
 
+class NonResumableDownload(Exception):
+    def __init__(self, *args):
+        self.args = args
+        super(NonResumableDownload, self).__init__(*args)
+    def __repr__(self):
+        return repr(self.args)
+    def __str__(self):
+        return str(self.args)
 
-def download(url, filename=None):
+def checkResumeSupport(url):
+    resp = requests.head(url)
+    if resp.headers.get(u'Accept-Ranges') == None:
+        raise NonResumableDownload(url, resp.headers)
+
+def download(url, filename=None, lo='0', hi=''):
+    checkResumeSupport(url)
     filename = filename or extractFilename(url)
     # create new file if the filename already exists
     # --
     # # # # # # # # # # # # # # # # # # # # # # # # #
     tmpname = 'tmp01230123.tmp'
-    _, result = urlretrieve(url, filename or tmpname, progressbar)
-    print
+    _, result = urlretrieve(url, lo, hi, filename or tmpname, progressbar)
+    print result
 
 if __name__ == '__main__':
     import sys
